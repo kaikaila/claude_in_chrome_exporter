@@ -57,8 +57,16 @@ Open it in any Markdown viewer (VS Code, GitHub, Obsidian, etc.) to review your 
 1. The snippet queries the side-panel DOM for known Claude message container classes (`group/message`, `response-body`, etc.).
 2. It labels each block as a **User** or **Claude** turn based on CSS class heuristics.
 3. If the primary selectors miss (e.g., after a UI update), it falls back to scanning all `<p>` and `<div>` elements, then to a full text-node walk as a last resort.
-4. Duplicate text nodes (common due to DOM nesting) are deduplicated before output.
+4. Two deduplication passes run before output: first, exact-duplicate text nodes (common due to DOM nesting) are dropped; then, a fingerprint-based pass removes fragment blocks — cases where Claude's full response is also emitted as a series of per-paragraph sub-blocks, each with its own `## 🤖 Claude` header. Only the first (most complete) block in each consecutive Claude run is kept.
 5. The result is assembled as a Markdown document and triggered as a browser download — no data ever leaves your machine.
+
+---
+
+## Known Limitations
+
+- **User messages may be missing.** Depending on the DOM structure of the side panel at the time of export, user turns may not be captured. This is a known gap in the CSS-class heuristics.
+- **Selector fragility.** Claude's side-panel class names change without notice. If exports are empty, the selectors likely need updating — open an issue with the affected DOM structure.
+- **Single conversation only.** The snippet captures the currently-visible conversation; batch export is not supported.
 
 ---
 

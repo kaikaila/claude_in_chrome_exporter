@@ -98,6 +98,79 @@
         });
     }
 
+    // --- Fragment deduplication ---
+    const SEPARATOR       = '\n\n---\n\n';
+    const CLAUDE_HEADER   = '## 🤖 Claude';
+    const USER_HEADER     = '## 👤 User';
+    const FINGERPRINT_LEN = 15;
+
+    function classifyBlock(block) {
+        const s = block.trim();
+        if (s.startsWith(CLAUDE_HEADER)) return 'claude';
+        if (s.startsWith(USER_HEADER))   return 'user';
+        return 'header';
+    }
+
+    function getBody(block) {
+        const lines = block.trim().split('\n');
+        const bodyLines = (lines.length && lines[0].startsWith(CLAUDE_HEADER))
+            ? lines.slice(1) : lines;
+        return bodyLines.join('\n').trim();
+    }
+
+    function isFragment(block, anchor) {
+        const body = getBody(block);
+        if (!body) return true;
+        const head = body.slice(0, FINGERPRINT_LEN);
+        const tail = body.slice(-FINGERPRINT_LEN);
+        const anchorBody = getBody(anchor);
+        const headMatched = anchorBody.split('\n')
+            .filter(l => l.trim())
+            .some(l => l.trim().slice(0, FINGERPRINT_LEN) === head);
+        return headMatched && anchorBody.includes(tail);
+    }
+
+    function dedupParagraphs(block) {
+        const seen = new Set();
+        return block.split('\n\n').filter(para => {
+            const key = para.trim();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        }).join('\n\n');
+    }
+
+    function deduplicateMarkdown(content) {
+        const blocks = content.split(SEPARATOR);
+        const kept = [];
+        let removed = 0, lastKeptType = null, anchor = null;
+        for (const block of blocks) {
+            const btype = classifyBlock(block);
+            if (btype === 'header') {
+                kept.push(block);
+            } else if (btype === 'user') {
+                kept.push(block);
+                lastKeptType = 'user';
+                anchor = null;
+            } else {
+                if (lastKeptType === 'claude' && anchor !== null && isFragment(block, anchor)) {
+                    removed++;
+                } else {
+                    const deduped = dedupParagraphs(block);
+                    kept.push(deduped);
+                    lastKeptType = 'claude';
+                    anchor = deduped;
+                }
+            }
+        }
+        return { content: kept.join(SEPARATOR), removed };
+    }
+
+    const dedupResult = deduplicateMarkdown(markdown);
+    markdown = dedupResult.content;
+    console.log(`Deduplication removed ${dedupResult.removed} fragment block(s).`);
+    // --- End fragment deduplication ---
+
     // --- Trigger a file download with the assembled Markdown ---
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
     const url  = URL.createObjectURL(blob);
